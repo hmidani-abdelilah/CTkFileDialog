@@ -92,6 +92,11 @@ class _DrawApp():
         self._temp_item = None 
         self.app.protocol("WM_DELETE_WINDOW", self.protocol_windows)
         self._temp_items =  [] 
+        
+        # Sorting state
+        self.sort_by = 'name' # name, type, created, modified
+        self.sort_reverse = False
+
         self.TopSide(master=self.app)
         self.LeftSide(master=self.app)
         self.CenterSide(master=self.app)
@@ -211,7 +216,7 @@ class _DrawApp():
             if self.method in ['asksaveasfile', 'asksaveasfilename']:
                 if os.path.isfile(ruta):
                     msg = CTkMessagebox(
-                        message='Este archivo existe. ¿Deseas sobreescribirlo?',
+                        message='Este archivo existe. ¿Deseas sobreesكرته؟',
                         icon='warning',
                         title='Advertencia',
                         option_1='Yes',
@@ -286,18 +291,10 @@ class _DrawApp():
     @staticmethod
     def _is_video(video: str):
 
-        try:
+        video_extensions = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv')
+        return video.lower().endswith(video_extensions)
 
-            cap = cv2.VideoCapture(video)
-            valid = cap.isOpened()
-            cap.release()
-            return valid 
-        except:
-
-            return False
-                
-
-    def _autocomplete(self, event):        
+    def _autocomplete(self, event) -> str:
 
         if not hasattr(self, "entire_paths"):
             return "break"
@@ -325,10 +322,22 @@ class _DrawApp():
 
         return "break"
 
+    def _set_sort(self, by, master):
+        if self.sort_by == by:
+            self.sort_reverse = not self.sort_reverse
+        else:
+            self.sort_by = by
+            self.sort_reverse = False
+        self._list_files(master)
+
     def TopSide(self, master: ctk.CTkToplevel) -> None:
-        TopBar = ctk.CTkFrame(master=master, height=40, fg_color="transparent")
+        TopBar = ctk.CTkFrame(master=master, height=80, fg_color="transparent")
         TopBar.pack(side='top', fill='x')
         
+        # Row 1: Actions and Path
+        Row1 = ctk.CTkFrame(master=TopBar, fg_color="transparent")
+        Row1.pack(side='top', fill='x', padx=5, pady=5)
+
         def btn_exit():
             msg = CTkMessagebox(message='¿Deseas salir?', title='Salir', option_1='Yes', option_2='No', icon='warning')
             if msg.get() == 'Yes':
@@ -342,22 +351,45 @@ class _DrawApp():
                 return 
 
         # Botón Salir
-        ButtonExit = ctk.CTkButton(master=TopBar, text='Exit', font=('Hack Nerd Font', 15), width=70, command=btn_exit, hover_color='red')
-        ButtonExit.pack(side='left', fill='x')
+        ButtonExit = ctk.CTkButton(master=Row1, text='Exit', font=('Hack Nerd Font', 15), width=70, command=btn_exit, hover_color='red')
+        ButtonExit.pack(side='left', padx=5)
 
          # Campo Path
-        self.PathEntry = ctk.CTkEntry(master=TopBar, width=1070, corner_radius=0, insertwidth=0)
+        self.PathEntry = ctk.CTkEntry(master=Row1, width=600, corner_radius=0, insertwidth=0)
         self.PathEntry.insert(index=0, string=_System.GetPath(str(self.current_path)))
-        self.PathEntry.pack(side='right', fill='y', padx=10, pady=10)
+        self.PathEntry.pack(side='left', fill='y', padx=5)
         self.PathEntry.bind('<Return>', command = lambda _: self.navigate_to(ruta=self.PathEntry.get(), master=master))
+
+        # Campo de Búsqueda
+        self.SearchEntry = ctk.CTkEntry(master=Row1, width=250, placeholder_text="Search...")
+        self.SearchEntry.pack(side='right', fill='y', padx=5)
+        self.SearchEntry.bind('<KeyRelease>', command=lambda _: self._on_search_change(master))
       
         # Botón Retroceso
-        ButtonRetroces = ctk.CTkButton(master=TopBar, text='', font=('Hack Nerd Font', 15), width=70, command = lambda path=self.PathEntry.get(): self.btn_retrocess(master=master))
-        ButtonRetroces.pack(side='left', fill='x', padx=10, pady=10)
+        ButtonRetroces = ctk.CTkButton(master=Row1, text='', font=('Hack Nerd Font', 15), width=70, command = lambda path=self.PathEntry.get(): self.btn_retrocess(master=master))
+        ButtonRetroces.pack(side='left', padx=5)
 
         # Boton de Ok 
-        ButtonOk = ctk.CTkButton(master=TopBar, text='Ok', font=('Hack Nerd Font', 15), width=70, command = lambda: self.close_app())
-        ButtonOk.pack(side='left', fill='x', padx=10, pady=10)
+        ButtonOk = ctk.CTkButton(master=Row1, text='Ok', font=('Hack Nerd Font', 15), width=70, command = lambda: self.close_app())
+        ButtonOk.pack(side='left', padx=5)
+
+        # Row 2: Sorting
+        Row2 = ctk.CTkFrame(master=TopBar, fg_color="transparent")
+        Row2.pack(side='top', fill='x', padx=5, pady=2)
+        
+        ctk.CTkLabel(master=Row2, text="Sort by:", font=('Arial', 12, 'bold')).pack(side='left', padx=10)
+        
+        sort_options = [
+            ("Name", "name"),
+            ("Type", "type"),
+            ("Created", "created"),
+            ("Modified", "modified")
+        ]
+        
+        for text, val in sort_options:
+            btn = ctk.CTkButton(master=Row2, text=text, width=80, height=25, 
+                               command=lambda v=val: self._set_sort(v, master))
+            btn.pack(side='left', padx=5)
 
         if self.autocomplete:
             
@@ -399,17 +431,18 @@ class _DrawApp():
         import platform
         if platform.system() == 'Linux':
             if not os.path.exists(path=dir_file):
-                raise FileNotFoundError(f"El archivo {dir_file} es importante para la ejecución del programa!")
-
-            with open(dir_file, 'r') as f:
-                for line in f:
-                    if not line.startswith('#') and line.strip():
-                        match = pattern.search(line)
-                        if match:
-                            ruta = os.path.expandvars(match.group(1))
-                            nombre = os.path.basename(os.path.normpath(ruta))
-                            if nombre != f"{os.getenv('USER')}":  # Evitar duplicado
-                                carpetas[nombre] = ruta
+                # raise FileNotFoundError(f"El archivo {dir_file} es importante para la ejecución del programa!")
+                pass
+            else:
+                with open(dir_file, 'r') as f:
+                    for line in f:
+                        if not line.startswith('#') and line.strip():
+                            match = pattern.search(line)
+                            if match:
+                                ruta = os.path.expandvars(match.group(1))
+                                nombre = os.path.basename(os.path.normpath(ruta))
+                                if nombre != f"{os.getenv('USER')}":  # Evitar duplicado
+                                    carpetas[nombre] = ruta
 
         elif platform.system() == 'Windows':
             home = Path.home()
@@ -632,7 +665,7 @@ class _DrawApp():
             )
 
             if self.tool_tip:
-                _CustomToolTip(widget=boton, message=self._get_info(ruta_completa))
+                _CustomToolTip(widget=boton, message=self._get_info(ruta_compleتا))
 
             if self.method in ['askopenfilenames', 'askopenfiles']:
                 boton.bind('<Button-1>', lambda event, r=ruta_completa, b=boton: self._handle_click(event, r, master, b))
@@ -656,6 +689,9 @@ class _DrawApp():
              pass
 
 
+    def _on_search_change(self, master):
+        self._list_files(master)
+
     def _list_files(self, master: ctk.CTkToplevel) -> None:
         self.LOADED = 0
         self.BATCH = 50  
@@ -666,24 +702,47 @@ class _DrawApp():
         self.__clear__()
 
         ruta_path = self.current_path
+        search_query = self.SearchEntry.get().lower() if hasattr(self, 'SearchEntry') else ""
         
-        self.archivos = [
-            f.name for f in os.scandir(ruta_path)
-            if (
-                (f.is_dir() or (self.method != 'askdirectory' and f.is_file())) and
-                (self.hidden or not f.name.startswith('.')) and
-                (f.is_dir() or not self.filetypes or
-                 any(f.name.endswith(ext) for ext in self.filetypes))
-            )
-        ]
+        # Get all entries and their stats for sorting
+        entries = []
+        for f in os.scandir(ruta_path):
+            if (f.is_dir() or (self.method != 'askdirectory' and f.is_file())) and \
+               (self.hidden or not f.name.startswith('.')) and \
+               (f.is_dir() or not self.filetypes or any(f.name.endswith(ext) for ext in self.filetypes)) and \
+               (not search_query or search_query in f.name.lower()):
+                
+                stat = f.stat()
+                entries.append({
+                    'name': f.name,
+                    'is_dir': f.is_dir(),
+                    'type': os.path.splitext(f.name)[1].lower() if not f.is_dir() else '',
+                    'created': stat.st_ctime,
+                    'modified': stat.st_mtime,
+                    'path': f.path
+                })
+
+        # Sorting logic
+        if self.sort_by == 'name':
+            entries.sort(key=lambda x: x['name'].lower(), reverse=self.sort_reverse)
+        elif self.sort_by == 'type':
+            entries.sort(key=lambda x: (x['type'], x['name'].lower()), reverse=self.sort_reverse)
+        elif self.sort_by == 'created':
+            entries.sort(key=lambda x: x['created'], reverse=self.sort_reverse)
+        elif self.sort_by == 'modified':
+            entries.sort(key=lambda x: x['modified'], reverse=self.sort_reverse)
+
+        # Always keep directories on top unless explicitly reversed
+        if not self.sort_reverse:
+            entries.sort(key=lambda x: not x['is_dir'])
+
+        self.archivos = [e['name'] for e in entries]
 
         if not self.archivos:
             return
         
         if self.autocomplete:
-        
-            self.entire_paths = [os.path.join(self.current_path, f) for f in self.archivos]
-
+            self.entire_paths = [e['path'] for e in entries]
             if not self.entire_paths: 
                 self.entire_paths = None
 
@@ -723,6 +782,10 @@ class _MiniDialog():
         self.selected_items = []
         self.selected_item = ''
         
+        # Sorting state
+        self.sort_by = 'name'
+        self.sort_reverse = False
+
         # Load images 
         self._PATH = os.path.dirname(os.path.realpath(__file__))
 
@@ -746,13 +809,21 @@ class _MiniDialog():
 
         return os.path.abspath(os.path.expandvars(os.path.expanduser(self.initial_dir)))
 
+    def _set_sort(self, by):
+        if self.sort_by == by:
+            self.sort_reverse = not self.sort_reverse
+        else:
+            self.sort_by = by
+            self.sort_reverse = False
+        self.list_files()
+
     def _TopSide(self):
 
         self.frame = ctk.CTkFrame(self.master)
         self.frame.pack(fill=ctk.BOTH, expand=True)
 
         self.path_frame = ctk.CTkFrame(self.frame)
-        self.path_frame.pack(fill=ctk.X, padx=10, pady=10)
+        self.path_frame.pack(fill=ctk.X, padx=10, pady=5)
 
         self.path_entry = ctk.CTkEntry(self.path_frame, )
         self.path_entry.pack(expand=True, fill=ctk.X, side=ctk.LEFT, padx=10, pady=10)
@@ -766,8 +837,22 @@ class _MiniDialog():
         self.up_btn = ctk.CTkButton(
             self.path_frame, text="↑", width=30, command=self._up
         )
+        self.up_btn.pack(side=ctk.LEFT, padx=10, pady=10)
 
-        self.up_btn.pack(side=ctk.RIGHT, padx=10, pady=10)
+        # Search Bar for Mini Dialog
+        self.search_entry = ctk.CTkEntry(self.path_frame, placeholder_text="Search...", width=120)
+        self.search_entry.pack(side=ctk.RIGHT, padx=10, pady=10)
+        self.search_entry.bind('<KeyRelease>', lambda _: self._on_search_change_mini())
+
+        # Sort Frame for Mini Dialog
+        self.sort_frame = ctk.CTkFrame(self.frame, fg_color='transparent', height=30)
+        self.sort_frame.pack(fill=ctk.X, padx=10, pady=2)
+        
+        sort_options = [("Name", "name"), ("Type", "type"), ("Date", "modified")]
+        for text, val in sort_options:
+            ctk.CTkButton(self.sort_frame, text=text, width=60, height=20, font=('Arial', 10),
+                         command=lambda v=val: self._set_sort(v)).pack(side=ctk.LEFT, padx=5)
+
         btn_frame = ctk.CTkFrame(self.frame, fg_color='transparent')
         btn_frame.pack(side=ctk.BOTTOM, fill=ctk.X, padx=10, pady=10)
 
@@ -777,6 +862,9 @@ class _MiniDialog():
         ctk.CTkButton(btn_frame, text="Cancel", command=self._on_cancel).pack(
             side=ctk.RIGHT, padx=10
         )
+
+    def _on_search_change_mini(self):
+        self.list_files()
 
     def list_files(self):
         ruta_path = os.path.abspath(os.path.expanduser(os.path.expandvars(self.path_entry.get())))
@@ -791,41 +879,51 @@ class _MiniDialog():
                 return 
 
             self.archivos = {'name': [], 'path': []}
-
-            archivos_filtrados = []
-
+            search_query = self.search_entry.get().lower() if hasattr(self, 'search_entry') else ""
+            
+            entries = []
             for f in os.scandir(ruta_path):
-                if (
-                    (f.is_dir() or (self.method != 'askdirectory' and f.is_file())) and
-                    (self.hidden or not f.name.startswith('.')) and
-                    (f.is_dir() or not self.filetypes or
-                     any(f.name.endswith(ext) for ext in self.filetypes))
-                ):
-                    archivos_filtrados.append(f)
-                    self.archivos['name'].append(f.name)
-                    self.archivos['path'].append(f.path)
+                if (f.is_dir() or (self.method != 'askdirectory' and f.is_file())) and \
+                   (self.hidden or not f.name.startswith('.')) and \
+                   (f.is_dir() or not self.filetypes or any(f.name.endswith(ext) for ext in self.filetypes)) and \
+                   (not search_query or search_query in f.name.lower()):
+                    
+                    stat = f.stat()
+                    entries.append({
+                        'name': f.name,
+                        'is_dir': f.is_dir(),
+                        'type': os.path.splitext(f.name)[1].lower() if not f.is_dir() else '',
+                        'modified': stat.st_mtime,
+                        'path': f.path
+                    })
 
-            archivos_ordenados = sorted(
-                archivos_filtrados,
-                key=lambda f: (not f.is_dir(), f.name.lower())
-            )
+            # Sorting logic
+            if self.sort_by == 'name':
+                entries.sort(key=lambda x: x['name'].lower(), reverse=self.sort_reverse)
+            elif self.sort_by == 'type':
+                entries.sort(key=lambda x: (x['type'], x['name'].lower()), reverse=self.sort_reverse)
+            elif self.sort_by == 'modified':
+                entries.sort(key=lambda x: x['modified'], reverse=self.sort_reverse)
+
+            if not self.sort_reverse:
+                entries.sort(key=lambda x: not x['is_dir'])
 
             self.update_entry(path=ruta_path)
 
-            for f in archivos_ordenados:
-                icon = self.folder_image if f.is_dir() else self.file_image
-                self.tree.insert("", tk.END, text=f.name, image=icon)
+            for e in entries:
+                icon = self.folder_image if e['is_dir'] else self.file_image
+                self.tree.insert("", tk.END, text=e['name'], image=icon)
+                self.archivos['name'].append(e['name'])
+                self.archivos['path'].append(e['path'])
             
             if self.autocomplete:
-                self.absolute_paths = [f.path for f in archivos_ordenados]
+                self.absolute_paths = [e['path'] for e in entries]
 
         except PermissionError:
             CTkMessagebox(message='Permision Denied!', title='Error', icon='cancel')
             self._on_cancel(destroy=False)
         else: 
-            
             if self.autocomplete:
-
                 self.max_index = len(self.archivos['name'])
 
 
@@ -833,121 +931,88 @@ class _MiniDialog():
             self.path_entry.configure(state='normal')
             self.path_entry.delete(0, ctk.END)
             self.path_entry.insert(0, path)
-    
-    def _autocomplete(self, event: tk.Event):
-
-        if not self.archivos['name'] or not hasattr(self, "max_index"):
-            return "break"
-
-        if event.keysym == 'Up':
-            self.tab_index = (self.tab_index - 1) % self.max_index
-        else:
-            self.tab_index = (self.tab_index + 1) % self.max_index
-
-        path = self.absolute_paths[self.tab_index]
-
-        self.path_entry.delete(0, ctk.END)
-        self.path_entry.insert(0, path)
-
-        item_id = self.tree.get_children()[self.tab_index]
-        self.tree.focus(item_id)
-        self.tree.selection_set(item_id)
-        self.tree.see(item_id)
-
-        self.selected_item = path
-        return "break"
-
-    def _on_enter_path(self):
-        path = os.path.abspath(os.path.expanduser(os.path.expandvars(self.path_entry.get())))
-
-        if os.path.isdir(path):
-            self.initial_dir = path
-            self.list_files()
-        else: 
-            if os.path.isfile(path):
-                return 
-
-            self.path_entry.configure(state='normal')
-
-            if not os.path.exists(path=path):
-
-                self._on_cancel(destroy=False)
-                self.update_entry(path=self.initial_dir)
-                CTkMessagebox(title="Error", icon='cancel', message='No such file or directory!')
-
-            return ""
-
-
-    def _on_cancel(self, destroy: bool = True):
-        self.selected_path = None 
-        self.selected_item = None 
-
-        self.selected_paths = None 
-        self.selected_items = None
-        if destroy:
-            self.master.destroy()
-        return 
 
     def _CenterSide(self):
+
         self.tree_frame = ctk.CTkFrame(self.frame)
-        self.tree_frame.pack(fill=ctk.BOTH, expand=True, padx=10, pady=5)
+        self.tree_frame.pack(fill=ctk.BOTH, expand=True, padx=10, pady=10)
 
+        # Configurar estilo para el Treeview
         style = ttk.Style()
-        style.theme_use('clam')
-        mode = ctk.get_appearance_mode()
-
-        if mode == 'Dark':
-            style.configure("Treeview",
-                            background="#242424",
-                            foreground="#FFFFFF",
-                            fieldbackground="#242424",
-                            bordercolor="#242424",
-                            rowheight=30)
-            style.map("Treeview",
-                background=[('selected', '#444444')],
-                foreground=[('selected', '#FFFFFF')])
-        else:  # Light mode
-            style.configure("Treeview",
-                            background="#FFFFFF",
-                            foreground="#000000",
-                            fieldbackground="#FFFFFF",
-                            bordercolor="#DDDDDD",
-                            rowheight=30)
-            style.map("Treeview",
-                background=[('selected', '#E0E0E0')],
-                foreground=[('selected', '#000000')])
-        self.tree = ttk.Treeview(self.tree_frame, show="tree", selectmode='extended' if self.method in ['askopenfilenames', 'askopenfiles'] else 'browse')
-        self.tree.bind("<Double-1>", self._on_click)
-        self.tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-    def _load_image(self, image: str) -> tk.PhotoImage:
+        style.theme_use("default")
         
-        return tk.PhotoImage(file=image)
-    
+        # Colores para el Treeview
+        bg_color = self.master._apply_appearance_mode(ctk.ThemeManager.theme["CTkFrame"]["fg_color"])
+        fg_color = self.master._apply_appearance_mode(ctk.ThemeManager.theme["CTkLabel"]["text_color"])
+        selected_color = self.master._apply_appearance_mode(ctk.ThemeManager.theme["CTkButton"]["fg_color"])
+
+        style.configure("Treeview",
+                        background=bg_color,
+                        foreground=fg_color,
+                        fieldbackground=bg_color,
+                        borderwidth=0,
+                        font=("Arial", 11))
+        
+        style.map("Treeview", background=[('selected', selected_color)])
+
+        self.tree = ttk.Treeview(self.tree_frame, show="tree", selectmode="extended" if self.method in ['askopenfilenames', 'askopenfiles'] else "browse")
+        self.tree.pack(side=ctk.LEFT, fill=ctk.BOTH, expand=True)
+
+        scrollbar = ctk.CTkScrollbar(self.tree_frame, command=self.tree.yview)
+        scrollbar.pack(side=ctk.RIGHT, fill=ctk.Y)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+
+        self.tree.bind("<Double-1>", self._on_click)
+        self.tree.bind("<<TreeviewSelect>>", self._on_select_item)
+
+    def _load_image(self, image: str):
+        return tk.PhotoImage(file=image).subsample(2, 2)
+
+    def _on_enter_path(self):
+        self.initial_dir = self.path_entry.get()
+        self.list_files()
+
+    def _autocomplete(self, event):
+        if not hasattr(self, "absolute_paths") or not self.absolute_paths:
+            return "break"
+
+        max_index = len(self.absolute_paths)
+        if event.keysym == 'Up':
+            self.tab_index = (self.tab_index - 1) % max_index
+        else:
+            self.tab_index = (self.tab_index + 1) % max_index
+
+        path = self.absolute_paths[self.tab_index]
+        self.path_entry.delete(0, ctk.END)
+        self.path_entry.insert(0, path)
+        return "break"
+
+    def _on_cancel(self, destroy=True):
+        self.selected_path = None
+        self.selected_paths = []
+        if destroy:
+            self.master.destroy()
+
+    def _on_select_item(self, event):
+        selected_item = self.tree.focus()
+        if not selected_item:
+            return
+        
+        items = self.tree.get_children()
+        idx = items.index(selected_item)
+        self.selected_item = self.absolute_paths[idx]
+
     def _on_select(self):
-
-        path = self.path_entry.get().strip() if hasattr(self, "path_entry") else ""
-
-        if path:
-            path = os.path.abspath(os.path.expandvars(os.path.expanduser(path)))
-            if not os.path.dirname(path):
-                path = os.path.join(self.initial_dir, path)
-
-        if self.method in ['asksaveasfile', 'asksaveasfilename']:
-            if not path or os.path.isdir(path):
+        if self.method == 'asksaveasfilename':
+            path = self.path_entry.get()
+            if not path:
                 return
-
-            if os.path.exists(path) and self._extra_method != 'askopenfile':
-                opts = CTkMessagebox(
-                    message='This file exists now! Do you wanna rescribe?',
-                    title='Error',
-                    icon='warning',
-                    option_1='Yes',
-                    option_2='No'
-                )
-                if opts.get() == 'No':
+            
+            if os.path.exists(path):
+                msg = CTkMessagebox(message="File exists. Overwrite?", icon="warning", option_1="Yes", option_2="No")
+                if msg.get() == "No":
                     return
-
+            
             self.selected_path = path
             self.master.destroy()
             return
