@@ -216,7 +216,7 @@ class _DrawApp():
             if self.method in ['asksaveasfile', 'asksaveasfilename']:
                 if os.path.isfile(ruta):
                     msg = CTkMessagebox(
-                        message='Este archivo existe. ¿Deseas sobreesكرته؟',
+                        message='Este archivo existe. ¿Deseas sobrees؟',
                         icon='warning',
                         title='Advertencia',
                         option_1='Yes',
