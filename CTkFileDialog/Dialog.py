@@ -665,7 +665,7 @@ class _DrawApp():
             )
 
             if self.tool_tip:
-                _CustomToolTip(widget=boton, message=self._get_info(ruta_compleتا))
+                _CustomToolTip(widget=boton, message=self._get_info(ruta_completa))
 
             if self.method in ['askopenfilenames', 'askopenfiles']:
                 boton.bind('<Button-1>', lambda event, r=ruta_completa, b=boton: self._handle_click(event, r, master, b))
